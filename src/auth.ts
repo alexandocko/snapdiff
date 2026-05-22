@@ -43,3 +43,21 @@ export function resolveEnvVar(value: string): string {
 export function mergeHeaders(base: AuthHeaders, override: AuthHeaders): AuthHeaders {
   return { ...base, ...override };
 }
+
+/**
+ * Redacts sensitive header values for safe logging.
+ * Replaces the value of Authorization and any x-api-key style headers
+ * with a masked string showing only the last 4 characters.
+ */
+export function redactAuthHeaders(headers: AuthHeaders): AuthHeaders {
+  const sensitiveKeys = /^(authorization|x-api-key|api-key)$/i;
+  const redacted: AuthHeaders = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (sensitiveKeys.test(key)) {
+      redacted[key] = value.length > 4 ? `****${value.slice(-4)}` : '****';
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
