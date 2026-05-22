@@ -1,52 +1,66 @@
-import { fetchSnapshot, Snapshot, SnapshotOptions } from './snapshot';
+import fetch from 'node-fetch';
+import { writeCache, readCache } from './cache';
 
-export interface FetchPairOptions {
-  stagingUrl: string;
-  productionUrl: string;
-  outputDir: string;
+export interface FetchOptions {
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  useCache?: boolean;
+  cacheMaxAgeMs?: number;
 }
 
-export interface SnapshotPair {
-  staging: Snapshot;
-  production: Snapshot;
+export interface FetchResult {
+  url: string;
+  env: string;
+  status: number;
+  body: unknown;
+  durationMs: number;
+  fromCache: boolean;
 }
 
-export async function fetchPair(
-  options: FetchPairOptions
-): Promise<SnapshotPair> {
-  const stagingOptions: SnapshotOptions = {
-    outputDir: options.outputDir,
-    environment: 'staging',
-  };
+export async function fetchEndpoint(
+  url: string,
+  env: string,
+  options: FetchOptions = {}
+): Promise<FetchResult> {
+  const {
+    headers = {},
+    timeoutMs = 10_000,
+    useCache = false,
+    cacheMaxAgeMs = 60_000,
+  } = options;
 
-  const productionOptions: SnapshotOptions = {
-    outputDir: options.outputDir,
-    environment: 'production',
-  };
+  if (useCache) {
+    const cached = readCache(url, env, cacheMaxAgeMs);
+    if (cached) {
+      return {
+        url,
+        env,
+        status: 200,
+        body: cached.body,
+        durationMs: 0,
+        fromCache: true,
+      };
+    }
+  }
 
-  const [staging, production] = await Promise.all([
-    fetchSnapshot(options.stagingUrl, stagingOptions),
-    fetchSnapshot(options.productionUrl, productionOptions),
-  ]);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const start = Date.now();
 
-  return { staging, production };
-}
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal as never,
+    });
+    const durationMs = Date.now() - start;
+    const body = await response.json().catch(() => null);
 
-export async function fetchPairSequential(
-  options: FetchPairOptions
-): Promise<SnapshotPair> {
-  const stagingOptions: SnapshotOptions = {
-    outputDir: options.outputDir,
-    environment: 'staging',
-  };
+    if (useCache && response.ok) {
+      writeCache(url, env, body);
+    }
 
-  const productionOptions: SnapshotOptions = {
-    outputDir: options.outputDir,
-    environment: 'production',
-  };
-
-  const staging = await fetchSnapshot(options.stagingUrl, stagingOptions);
-  const production = await fetchSnapshot(options.productionUrl, productionOptions);
-
-  return { staging, production };
+    return { url, env, status: response.status, body, durationMs, fromCache: false };
+  } finally {
+    clearTimeout(timer);
+  }
 }
