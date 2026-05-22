@@ -33,3 +33,11 @@ export interface EnvEndpointConfig {
   auth?: AuthConfig;
   headers?: Record<string, string>;
 }
+
+/**
+ * Returns true if the given AuthConfig requires credentials to be present
+ * (i.e. is not a 'none' auth type).
+ */
+export function requiresCredentials(auth: AuthConfig): auth is BearerAuth | BasicAuth | ApiKeyAuth {
+  return auth.type !== 'none';
+}
