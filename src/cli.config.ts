@@ -1,43 +1,42 @@
-/**
- * CLI-specific configuration defaults and helpers.
- * Separates CLI concerns from core config loading logic.
- */
-
-export const CLI_DEFAULTS = {
-  configFile: 'snapdiff.config.json',
-  outputFormat: 'text' as 'text' | 'json',
-  exitOnDiff: true,
-} as const;
-
-export type OutputFormat = typeof CLI_DEFAULTS.outputFormat;
+import { OutputFormat } from "./output";
 
 export interface CliOptions {
-  config: string;
+  config?: string;
   output?: string;
   format: OutputFormat;
-  exitOnDiff: boolean;
+  filter?: string;
+  failOnChange: boolean;
+  verbose: boolean;
+  noCache: boolean;
 }
 
-/**
- * Merges partial CLI options with defaults.
- */
-export function resolveCliOptions(partial: Partial<CliOptions>): CliOptions {
+export function resolveCliOptions(argv: Record<string, unknown>): CliOptions {
+  const format = resolveFormat(argv.format as string | undefined);
   return {
-    config: partial.config ?? CLI_DEFAULTS.configFile,
-    output: partial.output,
-    format: partial.format ?? CLI_DEFAULTS.outputFormat,
-    exitOnDiff: partial.exitOnDiff ?? CLI_DEFAULTS.exitOnDiff,
+    config: argv.config as string | undefined,
+    output: argv.output as string | undefined,
+    format,
+    filter: argv.filter as string | undefined,
+    failOnChange: Boolean(argv["fail-on-change"] ?? argv.failOnChange ?? false),
+    verbose: Boolean(argv.verbose ?? false),
+    noCache: Boolean(argv["no-cache"] ?? argv.noCache ?? false),
   };
 }
 
-/**
- * Returns the appropriate process exit code based on diff results.
- * 0 = no differences, 1 = differences found, 2 = error
- */
+function resolveFormat(raw: string | undefined): OutputFormat {
+  if (raw === "json" || raw === "markdown" || raw === "text") {
+    return raw;
+  }
+  return "text";
+}
+
 export function resolveExitCode(
-  hasDifferences: boolean,
-  exitOnDiff: boolean
+  changed: number,
+  missing: number,
+  failOnChange: boolean
 ): number {
-  if (!exitOnDiff) return 0;
-  return hasDifferences ? 1 : 0;
+  if (failOnChange && (changed > 0 || missing > 0)) {
+    return 1;
+  }
+  return 0;
 }
